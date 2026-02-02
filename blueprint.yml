@@ -1,0 +1,248 @@
+meta:
+  project_name: "gergen-stack"
+  project_slug: "gergen-stack"
+  owner_team: "[Team Name/Owner]"
+  created_date: "2026-02-01"
+  description: "A production-shaped full-stack blueprints with React, Spring Boot, RDS, and Keycloak on AWS."
+  version: "1.0.0"
+
+repositories:
+  strategy: "monorepo"
+  layout:
+    root: "/"
+    infrastructure: "infra"
+    backend: "api"
+    frontend: "web"
+  languages:
+    java_version: "21"
+    node_version: "20"
+    terraform_version: "1.5+"
+
+workflow:
+  strategy: "trunk-based"
+  branches:
+    main: "main"
+    feature_pattern: "feat/*, fix/*, chore/*"
+  rules:
+    pull_requests: "Required for main"
+    checks_required: ["lint", "test", "build"]
+  artifact_identity_format: "${COMMIT_SHA}-${BUILD_NUMBER}"
+  rebuild_policy: "build-once-deploy-many"
+  promotion_flow:
+    dev: "Automatic on merge to main"
+    test: "Manual trigger (promotes specific artifact from Dev)"
+    prod: "Manual trigger (promotes specific artifact from Test)"
+
+environments:
+  local:
+    type: "developer-workstation"
+    purpose: "Development and unit testing"
+    compute: "Docker Compose"
+    database: "Local Postgres Container"
+    data_policy: "Mock/Seed data only"
+  
+  dev:
+    type: "cloud"
+    name: "development"
+    purpose: "Integration testing, shared preview"
+    approval_required: false
+    data_policy: "Synthetic/Anonymized data"
+    auto_migrate_db: true
+  
+  test:
+    type: "cloud"
+    name: "testing"
+    purpose: "QA, Staging, Final verification"
+    approval_required: true
+    data_policy: "Synthetic/Anonymized data"
+    auto_migrate_db: true
+  
+  prod:
+    type: "cloud"
+    name: "production"
+    purpose: "Live traffic"
+    approval_required: true
+    data_policy: "Real customer data"
+    auto_migrate_db: true
+    notes: "Migrations run on startup; code must be backward compatible."
+
+aws:
+  region: "us-east-1"
+  account_strategy: "single-account-prefixed"
+  resource_tagging:
+    Project: "gergen-stack"
+    Environment: "${env}"
+    ManagedBy: "Terraform"
+  terraform_state:
+    backend: "s3"
+    bucket_name: "gergen-stack-tf-state"
+    lock_table: "gergen-stack-tf-lock"
+    bootstrapping_note: "State bucket/table must be created manually or via bootstrap script before first apply."
+
+networking:
+  vpc_strategy: "single-vpc-per-env-or-shared" # Defaulting to isolated resources per env logic
+  visibility:
+    frontend: "Public (via CloudFront)"
+    backend: "Public load balancer, restrictive security groups"
+    database: "Private subnets only"
+  security_groups:
+    ingress:
+      lb: "Allow 80/443 from 0.0.0.0/0"
+      app: "Allow 8080 from Load Balancer SG only"
+      db: "Allow 5432 from App SG only"
+  cors:
+    enabled: true
+    configuration_source: "Spring Security"
+    allowed_origins:
+      dev: ["https://dev.web.gergen-stack.com", "http://localhost:3000"]
+      test: ["https://test.web.gergen-stack.com"]
+      prod: ["https://www.gergen-stack.com"]
+  
+identity:
+  provider: "Keycloak"
+  status: "Planned (Resource Server implementation first)"
+  clients:
+    api: "my-api"
+    spa: "my-spa"
+  jwt:
+    issuer_uri_placeholder: "https://auth.gergen-stack.com/realms/gergen-realm"
+    validator: "Spring Boot Resource Server"
+  rbac:
+    convention: "Map client roles to Spring Authorities"
+    example_mapping: "resource_access.my-api.roles['admin'] -> ROLE_ADMIN"
+  toggles:
+    auth_enabled_default: true
+    local_bypass_allowed: true
+
+backend:
+  stack: "Spring Boot 3.x"
+  frameworks: ["Spring Web", "Spring Data JPA", "Spring Security", "Flyway"]
+  deploy_target: "AWS Elastic Beanstalk"
+  deployment_format: "Executable JAR"
+  runtime_platform: "Java 21 AL2023"
+  service_discovery: "N/A (Monolith/Direct LoadBalancer DNS)"
+  context_path: "/api"
+  health_check:
+    path: "/actuator/health"
+    matcher: "200"
+  config_management:
+    secrets: "AWS Secrets Manager (DB Credentials)"
+    properties: "AWS SSM Parameter Store (/gergen-stack/${env}/api/...)"
+  gateway_toggle:
+    enabled: false
+    note: "Direct ALB access by default. can inject API Gateway later."
+
+frontend:
+  stack: "React (TypeScript)"
+  deploy_target: "AWS S3 + CloudFront"
+  build_process: "npm run build"
+  distribution:
+    spa_routing: "CloudFront error page rule (404/403 -> index.html)"
+    caching: "Managed-CachingOptimized"
+  configuration_strategy:
+    type: "Runtime"
+    mechanism: "config.json or window.env.js loaded in index.html, generated/uploaded during deploy"
+    reason: "Allows strict 'build once' artifact promotion across environments."
+
+database:
+  engine: "PostgreSQL"
+  version: "15+"
+  name: "appdb"
+  defaults:
+    dev:
+      class: "db.t3.micro"
+      multi_az: false
+      deletion_protection: false
+      backup_retention: 1 # day
+    test:
+      class: "db.t3.small"
+      multi_az: false
+      deletion_protection: true
+      backup_retention: 7 # days
+    prod:
+      class: "db.t3.medium"
+      multi_az: true
+      deletion_protection: true
+      backup_retention: 30 # days
+  connection:
+    method: "JDBC"
+    endpoint_visibility: "Private"
+
+migrations:
+  tool: "Flyway"
+  mode: "Embedded"
+  location: "classpath:db/migration"
+  conventions:
+    versioning: "V{Control}_{Major}_{Minor}__{Description}.sql"
+  execution_safety:
+    strategy: "Migrate on Startup"
+    requirement: "All migrations must be backward compatible (expand-contract pattern)."
+    fail_policy: "App fails to start if migration fails. Requires manual DB intervention to fix."
+
+cicd:
+  platform: "GitHub Actions"
+  auth: "AWS OIDC (AssumeRoleUrl)"
+  artifact_repository: "AWS S3 (Versioning Enabled)"
+  pipelines:
+    pr_check:
+      triggers: ["pull_request"]
+      steps: ["Setup Java/Node", "Lint", "Test", "Build"]
+    
+    build_and_deploy_dev:
+      triggers: ["push to main"]
+      steps:
+        - "Build Backend JAR -> S3 Artifacts/backend/${SHA}"
+        - "Build Frontend Static -> S3 Artifacts/frontend/${SHA}"
+        - "Deploy Backend to Beanstalk (Dev)"
+        - "Deploy Frontend to S3 (Dev) + Invalidate API"
+    
+    promote_test:
+      triggers: ["workflow_dispatch (inputs: commit_sha)"]
+      steps:
+        - "Copy S3 Artifacts/${SHA} to Test Buckets"
+        - "Update Beanstalk (Test) Version"
+    
+    promote_prod:
+      triggers: ["workflow_dispatch (inputs: commit_sha)"]
+      steps:
+        - "Wait for Approval"
+        - "Copy S3 Artifacts/${SHA} to Prod Buckets"
+        - "Update Beanstalk (Prod) Version"
+
+observability:
+  logging:
+    backend: "CloudWatch Logs (via Beanstalk Log Streaming)"
+    frontend: "N/A (Client side)"
+  metrics:
+    backend: "CloudWatch (Beanstalk Default) + Actuator Metrics (Optional Prometheus)"
+    database: "RDS Enhanced Monitoring"
+  tracing:
+    enabled: false
+    placeholder: "AWS X-Ray or OpenTelemetry"
+
+conventions:
+  names:
+    s3_bucket: "gergen-stack-${env}-${type}"
+    beanstalk_app: "gergen-stack-${env}-api"
+    rds_instance: "gergen-stack-${env}-db"
+  ssm_paths:
+    base: "/gergen-stack/${env}"
+    db_url: "/gergen-stack/${env}/database/url"
+    jwt_issuer: "/gergen-stack/${env}/auth/issuer"
+  secrets:
+    db_creds: "gergen-stack/${env}/database/credentials"
+
+outputs_expected:
+  - environment_names
+  - aws_region
+  - ssm_prefix_base
+  - secrets_manager_db_secret_name
+  - networking_vpc_id
+  - db_endpoint_address
+  - db_port
+  - db_name
+  - api_beanstalk_cname
+  - api_loadbalancer_arn
+  - web_cloudfront_distribution_id
+  - web_cloudfront_domain_name
+  - web_s3_bucket_name

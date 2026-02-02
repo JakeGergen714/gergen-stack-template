@@ -1,0 +1,79 @@
+name: Promote to Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Commit SHA (Short) to promote'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ARTIFACT_BUCKET: ${{ vars.ARTIFACT_BUCKET }}
+  
+  # API Vars
+  EB_ENV_NAME: ${{ vars.TEST_EB_ENV_NAME }}
+  EB_APP_NAME: ${{ vars.EB_APP_NAME }}
+  
+  # Web Vars
+  WEB_BUCKET: ${{ vars.TEST_WEB_BUCKET }}
+  CF_DIST_ID: ${{ vars.TEST_CF_DIST_ID }}
+  API_BASE_URL: ${{ vars.TEST_API_URL }}
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    # --- Deploy API ---
+    - name: Deploy API to Beanstalk (Test)
+      run: |
+        SHA="${{ inputs.commit_sha }}"
+        # Version Label might already exist if re-deploying, or we might need to recreate it if we scope versions per env. 
+        # Typically, Elastic Beanstalk Versions are Global to the App.
+        # So "dev-<SHA>" exists. We can deploy "dev-<SHA>" to Test, OR create "test-<SHA>" pointing to same S3 object.
+        # Better: Reuse existing version label "dev-<SHA>" if possible, but naming it "dev-" implies env.
+        # Let's create a new label "test-<SHA>" pointing to the SAME S3 artifact.
+        
+        VERSION_LABEL="test-${SHA}"
+        
+        # Check if version exists, if not create it
+        if ! aws elasticbeanstalk describe-application-versions --application-name ${{ env.EB_APP_NAME }} --version-labels $VERSION_LABEL | grep -q $VERSION_LABEL; then
+          aws elasticbeanstalk create-application-version \
+            --application-name ${{ env.EB_APP_NAME }} \
+            --version-label $VERSION_LABEL \
+            --source-bundle S3Bucket=${{ env.ARTIFACT_BUCKET }},S3Key=backend/${SHA}.jar
+        fi
+          
+        # Update Environment
+        aws elasticbeanstalk update-environment \
+          --environment-name ${{ env.EB_ENV_NAME }} \
+          --version-label $VERSION_LABEL
+
+    # --- Deploy Web ---
+    - name: Deploy Web to S3 (Test)
+      run: |
+        SHA="${{ inputs.commit_sha }}"
+        
+        # Download artifact
+        aws s3 cp s3://${{ env.ARTIFACT_BUCKET }}/frontend/${SHA}.zip web.zip
+        unzip web.zip -d dist
+        
+        # Generate Config for TEST
+        echo "window.ENV = { API_URL: '${{ env.API_BASE_URL }}', ENV_NAME: 'test' };" > dist/config.js
+        
+        # Sync to Bucket
+        aws s3 sync dist s3://${{ env.WEB_BUCKET }} --delete
+        
+    - name: Invalidate CloudFront
+      run: |
+        aws cloudfront create-invalidation --distribution-id ${{ env.CF_DIST_ID }} --paths "/*"

@@ -1,0 +1,68 @@
+spring:
+  application:
+    name: "gergen-stack-api"
+  datasource:
+    url: jdbc:postgresql://localhost:5432/appdb
+    username: dbadmin
+    password: password
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: "https://auth.gergen-stack.com/realms/gergen-realm"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  
+# Local overrides are default above, but explicit here helps
+  datasource:
+    url: jdbc:postgresql://localhost:5432/appdb
+    username: dbadmin
+    password: password
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: "http://localhost:8080/realms/gergen-realm" # Mock or Keycloak local
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev,test,prod
+    import: 
+      - "aws-parameterstore:/gergen-stack/${SPRING_PROFILES_ACTIVE}/"
+      - "aws-secretsmanager:${DB_SECRET_NAME}" # Injected via Env Var from Terraform Output
+
+# AWS Configuration mapping
+# We assume Parameter Store has /gergen-stack/dev/database/url
+# We assume Secrets Manager JSON has username, password
+  datasource:
+    # URL comes from SSM parameter /database/url (auto-mapped if property matching works, but explicit is safer)
+    # Actually, spring-cloud-aws-parameter-store maps /config/prefix/property.
+    # We used /gergen-stack/dev/database/url.
+    # If we map "database/url" to "spring.datasource.url", that works.
+    # Use explicit placeholders if automatic mapping is tricky.
+    url: ${database.url} 
+    username: ${username} # From Secrets Manager JSON
+    password: ${password} # From Secrets Manager JSON
+
