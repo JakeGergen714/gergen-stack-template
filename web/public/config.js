@@ -1,4 +1,4 @@
 window.ENV = {
-  API_URL: "http://localhost:8080",
-  ENV_NAME: "local"
+  API_URL: 'http://localhost:8080',
+  ENV_NAME: 'local',
 };

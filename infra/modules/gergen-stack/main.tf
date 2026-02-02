@@ -23,6 +23,7 @@ module "vpc" {
   enable_vpn_gateway = false
   
   create_database_subnet_group = true
+  create_database_subnet_route_table = true
 
   tags = local.common_tags
 }
@@ -228,9 +229,7 @@ resource "aws_elastic_beanstalk_application" "app" {
 resource "aws_elastic_beanstalk_environment" "env" {
   name                = "${local.name_prefix}-env"
   application         = aws_elastic_beanstalk_application.app.name
-  solution_stack_name = "64bit Amazon Linux 2023 v4.4.2 running Corretto 21" 
-  # Note: solution stacks update frequently, referencing a regex or data source is better but specific string is required here.
-  # 4.4.2 is recent as of early 2025. 
+  solution_stack_name = data.aws_elastic_beanstalk_solution_stack.java_21.name
   
   tier = "WebServer"
 
@@ -244,6 +243,11 @@ resource "aws_elastic_beanstalk_environment" "env" {
     namespace = "aws:ec2:vpc"
     name      = "Subnets"
     value     = join(",", module.vpc.public_subnets) # Public subnets for cheap compute (no NAT)
+  }
+  setting {
+    namespace = "aws:ec2:vpc"
+    name      = "AssociatePublicIpAddress"
+    value     = "true"
   }
   setting {
     namespace = "aws:ec2:instances"

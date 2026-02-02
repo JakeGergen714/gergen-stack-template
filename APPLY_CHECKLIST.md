@@ -3,6 +3,7 @@
 ## 1. Prerequisites (Local)
 
 - [ ] **AWS CLI** installed and configured (`aws configure` or `aws sso login`) with **AdministratorAccess**.
+  - _See [AWS_SETUP_GUIDE.md](AWS_SETUP_GUIDE.md) for step-by-step setup._
 - [ ] **Terraform** (v1.5+) installed.
 - [ ] **Git** installed and repo initialized (`git init`).
 
@@ -10,9 +11,9 @@
 
 **Directory:** `infra/bootstrap`
 
-1.  Identify your GitHub Repo (e.g., `jakeg/gergen-stack`).
+1.  Identify your GitHub Repo: `JakeGergen714/gergen-stack-template`
 2.  Run `terraform init`
-3.  Run `terraform apply -var="github_repository=jakeg/gergen-stack"`
+3.  Run `terraform apply -var="github_repository=JakeGergen714/gergen-stack-template"`
 4.  **Record Outputs:**
     - `s3_bucket_name` (e.g., `gergen-stack-tf-state`)
     - `dynamodb_table_name`
@@ -23,44 +24,62 @@
 Apply environments in order:
 
 ### A. Dev
+
 **Directory:** `infra/environments/dev`
+
 1.  Run `terraform init`
 2.  Run `terraform apply`
 3.  **Record Outputs** for GitHub Vars (Dev).
 
 ### B. Test (Empty Shell to Start)
+
 **Directory:** `infra/environments/test`
+
 1.  Run `terraform init`
 2.  Run `terraform apply`
 3.  **Record Outputs** for GitHub Vars (Test).
 
 ### C. Prod (Empty Shell to Start)
+
 **Directory:** `infra/environments/prod`
+
 1.  Run `terraform init`
 2.  Run `terraform apply`
 3.  **Record Outputs** for GitHub Vars (Prod).
 
 ## 4. GitHub Configuration
 
-### Secrets
-- [ ] `AWS_ROLE_ARN`: Value from Bootstrap output `github_actions_role_arn`.
+### 4.1 Secrets (Settings > Secrets and variables > Actions > Secrets)
 
-### Variables (Global)
-- [ ] `ARTIFACT_BUCKET`: Value from Dev output `artifact_bucket_name`.
-- [ ] `EB_APP_NAME`: Value from Dev output `api_beanstalk_app_name`.
+- [ ] `AWS_ROLE_ARN`
+  - **Value**: `arn:aws:iam::536816796854:role/gergen-stack-github-actions`
 
-### Variables (Per Environment)
-For each environment (Dev, Test, Prod), output mapping:
-- `WEB_BUCKET` <- `web_s3_bucket_name`
-- `CF_DIST_ID` <- `web_cloudfront_distribution_id`
-- `EB_ENV_NAME` <- `api_beanstalk_env_name`
-- `API_URL` <- `api_base_url`
+### 4.2 Variables (Settings > Secrets and variables > Actions > Variables)
 
-**Example Naming Convention in GitHub:**
-- `DEV_WEB_BUCKET`
-- `TEST_WEB_BUCKET`
-- `PROD_WEB_BUCKET`
-etc.
+**Global Variables:**
+
+- [ ] `ARTIFACT_BUCKET`
+  - **Value**: `gergen-stack-dev-beanstalk-artifacts`
+- [ ] `EB_APP_NAME`
+  - **Value**: `gergen-stack-dev-app`
+
+**Dev Environment Variables:**
+
+- [ ] `DEV_WEB_BUCKET`
+  - **Value**: `gergen-stack-dev-web`
+- [ ] `DEV_CF_DIST_ID`
+  - **Value**: `E3J4TGBBUG94M7`
+- [ ] `DEV_EB_ENV_NAME`
+  - **Value**: `gergen-stack-dev-env`
+- [ ] `DEV_API_URL`
+  - **Value**: `http://gergen-stack-dev-env.eba-ve95hihn.us-east-1.elasticbeanstalk.com/api`
+
+### 4.3 Future Environments (Test/Prod)
+
+_Fill these in after applying Test/Prod environments._
+
+- [ ] `TEST_WEB_BUCKET`, `TEST_CF_DIST_ID`, `TEST_EB_ENV_NAME`, `TEST_API_URL`
+- [ ] `PROD_WEB_BUCKET`, `PROD_CF_DIST_ID`, `PROD_EB_ENV_NAME`, `PROD_API_URL`
 
 ## 5. First Deployment
 
@@ -69,12 +88,16 @@ etc.
 3.  Verify success.
 
 ## 6. Artifact Pattern Confirmation
+
 The system relies on this EXACT path structure in S3. Do not change manually.
+
 - **Backend:** `s3://${ARTIFACT_BUCKET}/backend/${SHORT_SHA}.jar`
 - **Frontend:** `s3://${ARTIFACT_BUCKET}/frontend/${SHORT_SHA}.zip`
 
 ## 7. Migration Policy (Production)
+
 **Start-up Auto-Migration**:
+
 - Migrations run automatically when the Spring Boot application starts.
 - **Strict Requirement**: All migrations must be **backward compatible**.
 - **Rollback**: If migration fails, app fails to start, Beanstalk performs rolling update failure, previous version remains live.
@@ -83,6 +106,7 @@ The system relies on this EXACT path structure in S3. Do not change manually.
 ## 8. Verification (Post-Deploy)
 
 ### API Smoke Test
+
 ```bash
 curl -i http://<api_beanstalk_cname>/api
 # Expect:
@@ -92,13 +116,18 @@ curl -i http://<api_beanstalk_cname>/api
 ```
 
 ### API Health Check
+
 ```bash
 curl -i http://<api_beanstalk_cname>/actuator/health
 # Expect: { "status": "UP" }
 ```
 
 ### Frontend Verification
+
 1.  Open `https://<web_cloudfront_domain_name>` in browser.
 2.  Confirm "Gergen Stack: dev" is visible.
 3.  Confirm "Backend Status" shows JSON response (matches health check).
+
+```
+
 ```

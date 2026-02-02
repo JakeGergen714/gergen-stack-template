@@ -2,7 +2,7 @@ name: Deploy to Dev
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ['main']
 
 permissions:
   id-token: write
@@ -11,11 +11,11 @@ permissions:
 env:
   AWS_REGION: us-east-1
   ARTIFACT_BUCKET: ${{ vars.ARTIFACT_BUCKET }}
-  
+
   # API Vars
   EB_ENV_NAME: ${{ vars.DEV_EB_ENV_NAME }}
   EB_APP_NAME: ${{ vars.EB_APP_NAME }}
-  
+
   # Web Vars
   WEB_BUCKET: ${{ vars.DEV_WEB_BUCKET }}
   CF_DIST_ID: ${{ vars.DEV_CF_DIST_ID }}
@@ -27,88 +27,88 @@ jobs:
     outputs:
       artifact_id: ${{ steps.vars.outputs.sha }}
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set outputs
-      id: vars
-      run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      - uses: actions/checkout@v4
 
-    # --- Build API ---
-    - name: Set up JDK 21
-      uses: actions/setup-java@v4
-      with:
-        java-version: '21'
-        distribution: 'temurin'
-        cache: maven
-    - name: Build API JAR
-      working-directory: ./api
-      run: ./mvnw package -DskipTests
-      
-    # --- Build Web ---
-    - name: Set up Node
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-    - name: Build Web
-      working-directory: ./web
-      run: |
-        npm install
-        npm run build
-        cd dist && zip -r ../web-build.zip .
+      - name: Set outputs
+        id: vars
+        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-    # --- Upload to S3 Artifacts ---
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-        aws-region: ${{ env.AWS_REGION }}
-        
-    - name: Publish Artifacts
-      run: |
-        # Upload Jar
-        aws s3 cp api/target/*.jar s3://${ARTIFACT_BUCKET}/backend/${{ steps.vars.outputs.sha }}.jar
-        # Upload Web Zip
-        aws s3 cp web/web-build.zip s3://${ARTIFACT_BUCKET}/frontend/${{ steps.vars.outputs.sha }}.zip
+      # --- Build API ---
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+      - name: Build API JAR
+        working-directory: ./api
+        run: ./mvnw package -DskipTests
+
+      # --- Build Web ---
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build Web
+        working-directory: ./web
+        run: |
+          npm install
+          npm run build
+          cd dist && zip -r ../web-build.zip .
+
+      # --- Upload to S3 Artifacts ---
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Publish Artifacts
+        run: |
+          # Upload Jar
+          aws s3 cp api/target/*.jar s3://${ARTIFACT_BUCKET}/backend/${{ steps.vars.outputs.sha }}.jar
+          # Upload Web Zip
+          aws s3 cp web/web-build.zip s3://${ARTIFACT_BUCKET}/frontend/${{ steps.vars.outputs.sha }}.zip
 
   deploy-dev:
     needs: build-and-publish
     runs-on: ubuntu-latest
     steps:
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-        aws-region: ${{ env.AWS_REGION }}
-        
-    # --- Deploy API ---
-    - name: Deploy API to Beanstalk
-      run: |
-        VERSION_LABEL="dev-${{ needs.build-and-publish.outputs.artifact_id }}"
-        
-        # Create App Version
-        aws elasticbeanstalk create-application-version \
-          --application-name ${{ env.EB_APP_NAME }} \
-          --version-label $VERSION_LABEL \
-          --source-bundle S3Bucket=${{ env.ARTIFACT_BUCKET }},S3Key=backend/${{ needs.build-and-publish.outputs.artifact_id }}.jar
-          
-        # Update Environment
-        aws elasticbeanstalk update-environment \
-          --environment-name ${{ env.EB_ENV_NAME }} \
-          --version-label $VERSION_LABEL
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-    # --- Deploy Web ---
-    - name: Deploy Web to S3
-      run: |
-        # Download artifact
-        aws s3 cp s3://${{ env.ARTIFACT_BUCKET }}/frontend/${{ needs.build-and-publish.outputs.artifact_id }}.zip web.zip
-        unzip web.zip -d dist
-        
-        # Generate Config
-        echo "window.ENV = { API_URL: '${{ env.API_BASE_URL }}', ENV_NAME: 'dev' };" > dist/config.js
-        
-        # Sync to Bucket (Delete removed files)
-        aws s3 sync dist s3://${{ env.WEB_BUCKET }} --delete
-        
-    - name: Invalidate CloudFront
-      run: |
-        aws cloudfront create-invalidation --distribution-id ${{ env.CF_DIST_ID }} --paths "/*"
+      # --- Deploy API ---
+      - name: Deploy API to Beanstalk
+        run: |
+          VERSION_LABEL="dev-${{ needs.build-and-publish.outputs.artifact_id }}"
+
+          # Create App Version
+          aws elasticbeanstalk create-application-version \
+            --application-name ${{ env.EB_APP_NAME }} \
+            --version-label $VERSION_LABEL \
+            --source-bundle S3Bucket=${{ env.ARTIFACT_BUCKET }},S3Key=backend/${{ needs.build-and-publish.outputs.artifact_id }}.jar
+            
+          # Update Environment
+          aws elasticbeanstalk update-environment \
+            --environment-name ${{ env.EB_ENV_NAME }} \
+            --version-label $VERSION_LABEL
+
+      # --- Deploy Web ---
+      - name: Deploy Web to S3
+        run: |
+          # Download artifact
+          aws s3 cp s3://${{ env.ARTIFACT_BUCKET }}/frontend/${{ needs.build-and-publish.outputs.artifact_id }}.zip web.zip
+          unzip web.zip -d dist
+
+          # Generate Config
+          echo "window.ENV = { API_URL: '${{ env.API_BASE_URL }}', ENV_NAME: 'dev' };" > dist/config.js
+
+          # Sync to Bucket (Delete removed files)
+          aws s3 sync dist s3://${{ env.WEB_BUCKET }} --delete
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation --distribution-id ${{ env.CF_DIST_ID }} --paths "/*"

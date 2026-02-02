@@ -60,7 +60,11 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
-		dependencyManagement>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<dependencyManagement>
 		<dependencies>
 			<dependency>
 				<groupId>io.awspring.cloud</groupId>
@@ -71,15 +75,6 @@
 			</dependency>
 		</dependencies>
 	</dependencyManagement>
-
-	<	<scope>test</scope>
-		</dependency>
-        
-        <!-- AWS SDK for Secrets Manager / SSM logic if we were pulling manually, 
-             but typically we let the environment inject them or use spring-cloud-aws.
-             For "Hello World Production", simplistic env var injection (configured by Beanstalk) is easiest
-             and avoids complex deps. I will stick to standard env vars. -->
-	</dependencies>
 
 	<build>
 		<plugins>
