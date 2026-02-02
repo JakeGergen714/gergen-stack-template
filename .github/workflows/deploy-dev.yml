@@ -65,6 +65,12 @@ jobs:
 
       - name: Publish Artifacts
         run: |
+          # Package JAR with Procfile for Beanstalk
+          cp api/Procfile api/target/Procfile
+          cd api/target
+          zip -u *.jar Procfile
+          cd ../..
+          
           # Upload Jar
           aws s3 cp api/target/*.jar s3://${ARTIFACT_BUCKET}/backend/${{ steps.vars.outputs.sha }}.jar
           # Upload Web Zip
