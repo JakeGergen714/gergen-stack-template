@@ -70,11 +70,11 @@ jobs:
           # Find the main jar (exclude original) and copy as application.jar
           find api/target -name "*.jar" ! -name "*original*" -exec cp {} backend-bundle/application.jar \;
           cp api/Procfile backend-bundle/Procfile
-          
+
           cd backend-bundle
           zip -r ../backend.zip .
           cd ..
-          
+
           # Upload Backend Zip
           aws s3 cp backend.zip s3://${ARTIFACT_BUCKET}/backend/${{ steps.vars.outputs.sha }}.zip
           # Upload Web Zip
