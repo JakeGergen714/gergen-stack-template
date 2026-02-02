@@ -14,7 +14,7 @@ public class Application {
 }
 
 @RestController
-class RootController {
+public class RootController {
 
     @GetMapping("/")
     public Map<String, String> looseSlash() {

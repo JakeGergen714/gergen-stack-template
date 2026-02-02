@@ -275,6 +275,11 @@ resource "aws_elastic_beanstalk_environment" "env" {
   }
   setting {
       namespace = "aws:elasticbeanstalk:application:environment"
+      name = "DB_SECRET_NAME"
+      value = aws_secretsmanager_secret.db_creds.name
+  }
+  setting {
+      namespace = "aws:elasticbeanstalk:application:environment"
       name = "SERVER_PORT"
       value = "5000"
   }

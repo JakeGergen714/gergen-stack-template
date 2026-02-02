@@ -65,14 +65,18 @@ jobs:
 
       - name: Publish Artifacts
         run: |
-          # Package JAR with Procfile for Beanstalk
-          cp api/Procfile api/target/Procfile
-          cd api/target
-          zip -u *.jar Procfile
-          cd ../..
+          # Package JAR and Procfile into a ZIP Bundle for Beanstalk
+          mkdir backend-bundle
+          # Find the main jar (exclude original) and copy as application.jar
+          find api/target -name "*.jar" ! -name "*original*" -exec cp {} backend-bundle/application.jar \;
+          cp api/Procfile backend-bundle/Procfile
           
-          # Upload Jar
-          aws s3 cp api/target/*.jar s3://${ARTIFACT_BUCKET}/backend/${{ steps.vars.outputs.sha }}.jar
+          cd backend-bundle
+          zip -r ../backend.zip .
+          cd ..
+          
+          # Upload Backend Zip
+          aws s3 cp backend.zip s3://${ARTIFACT_BUCKET}/backend/${{ steps.vars.outputs.sha }}.zip
           # Upload Web Zip
           aws s3 cp web/web-build.zip s3://${ARTIFACT_BUCKET}/frontend/${{ steps.vars.outputs.sha }}.zip
 
@@ -95,7 +99,7 @@ jobs:
           aws elasticbeanstalk create-application-version \
             --application-name ${{ env.EB_APP_NAME }} \
             --version-label $VERSION_LABEL \
-            --source-bundle S3Bucket=${{ env.ARTIFACT_BUCKET }},S3Key=backend/${{ needs.build-and-publish.outputs.artifact_id }}.jar
+            --source-bundle S3Bucket=${{ env.ARTIFACT_BUCKET }},S3Key=backend/${{ needs.build-and-publish.outputs.artifact_id }}.zip
             
           # Update Environment
           aws elasticbeanstalk update-environment \
